@@ -18,7 +18,7 @@ jobs:
 
       - name: Write project
         run: |
-          mkdir -p app/src/main/java/com/vanta/cam app/src/main/res/values app/src/main/res/layout
+          mkdir -p app/src/main/java/com/vanta/cam app/src/main/res/values app/src/main/res/layout app/src/main/res/drawable
           cat > settings.gradle.kts <<'EOF'
           pluginManagement {
               repositories {
@@ -83,6 +83,7 @@ jobs:
               implementation("androidx.camera:camera-video:$camerax")
               implementation("androidx.camera:camera-view:$camerax")
               implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+              implementation("com.google.mlkit:segmentation-selfie:16.0.0-beta6")
           }
           EOF
           cat > app/src/main/AndroidManifest.xml <<'EOF'
@@ -121,57 +122,151 @@ jobs:
               </style>
           </resources>
           EOF
+          cat > app/src/main/res/drawable/bg_pill.xml <<'EOF'
+          <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+              <solid android:color="#66000000"/>
+              <corners android:radius="24dp"/>
+          </shape>
+          EOF
+          cat > app/src/main/res/drawable/shutter_outer.xml <<'EOF'
+          <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
+              <solid android:color="#00000000"/>
+              <stroke android:width="4dp" android:color="#FFFFFF"/>
+          </shape>
+          EOF
+          cat > app/src/main/res/drawable/shutter_inner.xml <<'EOF'
+          <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
+              <solid android:color="#FFFFFF"/>
+          </shape>
+          EOF
+          cat > app/src/main/res/drawable/bg_gallery.xml <<'EOF'
+          <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+              <solid android:color="#33FFFFFF"/>
+              <corners android:radius="8dp"/>
+              <stroke android:width="1dp" android:color="#66FFFFFF"/>
+          </shape>
+          EOF
+          cat > app/src/main/res/drawable/bg_zoom_active.xml <<'EOF'
+          <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
+              <solid android:color="#FFFFFF"/>
+          </shape>
+          EOF
           cat > app/src/main/res/layout/activity_camera.xml <<'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
               android:layout_width="match_parent"
               android:layout_height="match_parent"
               android:background="#000000">
+
               <androidx.camera.view.PreviewView
                   android:id="@+id/preview"
                   android:layout_width="match_parent"
                   android:layout_height="match_parent"/>
-              <ImageButton
-                  android:id="@+id/flash"
-                  android:layout_width="48dp"
-                  android:layout_height="48dp"
-                  android:layout_gravity="top|end"
-                  android:layout_margin="16dp"
-                  android:background="@android:color/transparent"
-                  android:src="@android:drawable/ic_menu_camera"/>
+
+              <LinearLayout
+                  android:layout_width="match_parent"
+                  android:layout_height="wrap_content"
+                  android:layout_gravity="top"
+                  android:orientation="horizontal"
+                  android:gravity="center_vertical"
+                  android:padding="12dp"
+                  android:background="#33000000">
+
+                  <ImageButton
+                      android:id="@+id/btnSettings"
+                      android:layout_width="40dp"
+                      android:layout_height="40dp"
+                      android:background="@android:color/transparent"
+                      android:src="@android:drawable/ic_menu_preferences"/>
+
+                  <View android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1"/>
+
+                  <ImageButton
+                      android:id="@+id/btnFlash"
+                      android:layout_width="40dp"
+                      android:layout_height="40dp"
+                      android:background="@android:color/transparent"
+                      android:src="@android:drawable/ic_menu_camera"/>
+
+                  <ImageButton
+                      android:id="@+id/btnTimer"
+                      android:layout_width="40dp"
+                      android:layout_height="40dp"
+                      android:background="@android:color/transparent"
+                      android:src="@android:drawable/ic_menu_recent_history"/>
+              </LinearLayout>
+
               <LinearLayout
                   android:layout_width="match_parent"
                   android:layout_height="wrap_content"
                   android:layout_gravity="bottom"
                   android:orientation="vertical"
-                  android:padding="16dp">
-                  <TextView
-                      android:id="@+id/mode"
-                      android:layout_width="wrap_content"
-                      android:layout_height="wrap_content"
-                      android:layout_gravity="center_horizontal"
-                      android:padding="8dp"
-                      android:text="PHOTO"
-                      android:textColor="#FFFFFF"
-                      android:textSize="16sp"/>
+                  android:paddingBottom="16dp">
+
                   <HorizontalScrollView
                       android:layout_width="match_parent"
                       android:layout_height="wrap_content"
-                      android:layout_marginTop="8dp">
+                      android:scrollbars="none">
                       <LinearLayout
-                          android:id="@+id/zoomBar"
+                          android:id="@+id/modeStrip"
                           android:layout_width="wrap_content"
                           android:layout_height="wrap_content"
                           android:layout_gravity="center_horizontal"
-                          android:orientation="horizontal"/>
+                          android:orientation="horizontal"
+                          android:paddingHorizontal="12dp"/>
                   </HorizontalScrollView>
-                  <ImageButton
-                      android:id="@+id/shutter"
-                      android:layout_width="72dp"
-                      android:layout_height="72dp"
+
+                  <LinearLayout
+                      android:id="@+id/zoomPill"
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
                       android:layout_gravity="center_horizontal"
-                      android:layout_marginTop="16dp"
-                      android:background="@android:drawable/ic_menu_camera"/>
+                      android:layout_marginTop="10dp"
+                      android:orientation="horizontal"
+                      android:gravity="center_vertical"
+                      android:padding="4dp"
+                      android:background="@drawable/bg_pill"/>
+
+                  <LinearLayout
+                      android:layout_width="match_parent"
+                      android:layout_height="wrap_content"
+                      android:layout_marginTop="18dp"
+                      android:orientation="horizontal"
+                      android:gravity="center_vertical"
+                      android:paddingHorizontal="28dp">
+
+                      <ImageView
+                          android:id="@+id/gallery"
+                          android:layout_width="46dp"
+                          android:layout_height="46dp"
+                          android:background="@drawable/bg_gallery"
+                          android:scaleType="centerCrop"/>
+
+                      <View android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1"/>
+
+                      <FrameLayout
+                          android:layout_width="84dp"
+                          android:layout_height="84dp"
+                          android:background="@drawable/shutter_outer">
+
+                          <ImageButton
+                              android:id="@+id/shutter"
+                              android:layout_width="66dp"
+                              android:layout_height="66dp"
+                              android:layout_gravity="center"
+                              android:background="@drawable/shutter_inner"
+                              android:scaleType="center"/>
+                      </FrameLayout>
+
+                      <View android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1"/>
+
+                      <ImageButton
+                          android:id="@+id/flip"
+                          android:layout_width="46dp"
+                          android:layout_height="46dp"
+                          android:background="@android:color/transparent"
+                          android:src="@android:drawable/ic_menu_rotate"/>
+                  </LinearLayout>
               </LinearLayout>
           </FrameLayout>
           EOF
@@ -182,10 +277,17 @@ jobs:
           import android.annotation.SuppressLint
           import android.content.ContentValues
           import android.content.pm.PackageManager
+          import android.content.res.ColorStateList
+          import android.graphics.Bitmap
+          import android.graphics.BitmapFactory
+          import android.graphics.Color
+          import android.graphics.Matrix
           import android.os.Bundle
           import android.provider.MediaStore
+          import android.view.Gravity
           import android.view.MotionEvent
           import android.widget.ImageButton
+          import android.widget.ImageView
           import android.widget.LinearLayout
           import android.widget.TextView
           import android.widget.Toast
@@ -194,7 +296,7 @@ jobs:
           import androidx.camera.core.CameraSelector
           import androidx.camera.core.FocusMeteringAction
           import androidx.camera.core.ImageCapture
-          import androidx.camera.core.ImageCaptureException
+          import androidx.camera.core.ImageProxy
           import androidx.camera.core.Preview
           import androidx.camera.lifecycle.ProcessCameraProvider
           import androidx.camera.video.MediaStoreOutputOptions
@@ -207,49 +309,80 @@ jobs:
           import androidx.camera.view.PreviewView
           import androidx.core.app.ActivityCompat
           import androidx.core.content.ContextCompat
+          import com.google.mlkit.vision.common.InputImage
+          import com.google.mlkit.vision.segmentation.Segmentation
+          import com.google.mlkit.vision.segmentation.SegmentationMask
+          import com.google.mlkit.vision.segmentation.SelfieSegmenterOptions
           import java.text.SimpleDateFormat
           import java.util.Locale
 
           class CameraActivity : AppCompatActivity() {
 
               private lateinit var previewView: PreviewView
-              private lateinit var zoomBar: LinearLayout
+              private lateinit var zoomPill: LinearLayout
+              private lateinit var modeStrip: LinearLayout
               private lateinit var shutter: ImageButton
               private lateinit var flashBtn: ImageButton
-              private lateinit var modeText: TextView
+              private lateinit var flipBtn: ImageButton
+              private lateinit var gallery: ImageView
 
               private var imageCapture: ImageCapture? = null
               private var videoCapture: VideoCapture<Recorder>? = null
               private var recording: Recording? = null
               private var camera: Camera? = null
-              private var isVideo = false
+              private var lensFacing = CameraSelector.LENS_FACING_BACK
+              private var currentMode = "صورة"
               private var flashOn = false
-
               private val REQ = 10
+              private val modes = listOf("بورتريه", "صورة", "فيديو", "احترافي", "ليلي", "المزيد")
 
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
                   setContentView(R.layout.activity_camera)
 
                   previewView = findViewById(R.id.preview)
-                  zoomBar = findViewById(R.id.zoomBar)
+                  zoomPill = findViewById(R.id.zoomPill)
+                  modeStrip = findViewById(R.id.modeStrip)
                   shutter = findViewById(R.id.shutter)
-                  flashBtn = findViewById(R.id.flash)
-                  modeText = findViewById(R.id.mode)
+                  flashBtn = findViewById(R.id.btnFlash)
+                  flipBtn = findViewById(R.id.flip)
+                  gallery = findViewById(R.id.gallery)
+
+                  buildModes()
 
                   if (hasPerms()) startCamera() else ActivityCompat.requestPermissions(
                       this, arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO), REQ)
 
-                  shutter.setOnClickListener { if (isVideo) toggleRecording() else takePhoto() }
+                  shutter.setOnClickListener { if (currentMode == "فيديو") toggleRecording() else takePhoto() }
                   flashBtn.setOnClickListener { toggleFlash() }
-                  modeText.setOnClickListener {
-                      isVideo = !isVideo
-                      modeText.text = if (isVideo) "VIDEO" else "PHOTO"
-                  }
+                  flipBtn.setOnClickListener { switchCamera() }
+                  gallery.setOnClickListener { toast("المعرض") }
                   previewView.setOnTouchListener { _, e ->
                       if (e.action == MotionEvent.ACTION_UP) focus(e.x, e.y)
                       true
                   }
+              }
+
+              private fun buildModes() {
+                  modeStrip.removeAllViews()
+                  for (m in modes) {
+                      val tv = TextView(this)
+                      tv.text = m
+                      tv.textSize = 14f
+                      tv.setPadding(30, 12, 30, 12)
+                      tv.setTextColor(if (m == currentMode) Color.WHITE else Color.parseColor("#99FFFFFF"))
+                      tv.setOnClickListener { selectMode(m) }
+                      modeStrip.addView(tv)
+                  }
+              }
+
+              private fun selectMode(m: String) {
+                  if (m == "المزيد") { toast("المزيد — قريباً"); return }
+                  if (m != "صورة" && m != "فيديو" && m != "بورتريه") { toast("$m — قريباً"); return }
+                  currentMode = m
+                  buildModes()
+                  val tint = if (m == "فيديو") Color.parseColor("#FF3B30") else Color.WHITE
+                  shutter.backgroundTintList = ColorStateList.valueOf(tint)
               }
 
               private fun hasPerms() =
@@ -273,26 +406,52 @@ jobs:
                           .setQualitySelector(QualitySelector.from(Quality.HD)).build()
                       videoCapture = VideoCapture.withOutput(recorder)
 
+                      val selector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
                       provider.unbindAll()
-                      camera = provider.bindToLifecycle(
-                          this, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageCapture, videoCapture)
-                      buildZoomPresets()
+                      camera = provider.bindToLifecycle(this, selector, preview, imageCapture, videoCapture)
+                      buildZoom()
                   }, ContextCompat.getMainExecutor(this))
               }
 
-              private fun buildZoomPresets() {
+              private fun switchCamera() {
+                  lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK)
+                      CameraSelector.LENS_FACING_FRONT else CameraSelector.LENS_FACING_BACK
+                  startCamera()
+              }
+
+              private fun buildZoom() {
                   val info = camera?.cameraInfo ?: return
                   val min = info.zoomState.value?.minZoomRatio ?: 1f
                   val max = info.zoomState.value?.maxZoomRatio ?: 1f
                   val presets = listOf(0.6f, 1f, 2f, 3f, 5f, 10f).filter { it in min..max }
-                  zoomBar.removeAllViews()
+                  zoomPill.removeAllViews()
+                  val size = (46 * resources.displayMetrics.density).toInt()
                   for (z in presets) {
-                      val b = TextView(this)
-                      b.text = if (z < 1f) "${z}x" else "${z.toInt()}x"
-                      b.setPadding(28, 14, 28, 14)
-                      b.setTextColor(0xFFFFFFFF.toInt())
-                      b.setOnClickListener { camera?.cameraControl?.setZoomRatio(z) }
-                      zoomBar.addView(b)
+                      val tv = TextView(this)
+                      tv.text = if (z < 1f) "0.6x" else "${z.toInt()}x"
+                      tv.textSize = 13f
+                      tv.gravity = Gravity.CENTER
+                      tv.layoutParams = LinearLayout.LayoutParams(size, size)
+                      tv.setTextColor(Color.parseColor("#CCFFFFFF"))
+                      tv.setOnClickListener {
+                          camera?.cameraControl?.setZoomRatio(z)
+                          highlightZoom(z, presets)
+                      }
+                      zoomPill.addView(tv)
+                  }
+                  if (1f in presets) highlightZoom(1f, presets)
+              }
+
+              private fun highlightZoom(active: Float, presets: List<Float>) {
+                  for (i in 0 until zoomPill.childCount) {
+                      val tv = zoomPill.getChildAt(i) as TextView
+                      if (presets[i] == active) {
+                          tv.setBackgroundResource(R.drawable.bg_zoom_active)
+                          tv.setTextColor(Color.BLACK)
+                      } else {
+                          tv.background = null
+                          tv.setTextColor(Color.parseColor("#CCFFFFFF"))
+                      }
                   }
               }
 
@@ -310,25 +469,113 @@ jobs:
 
               private fun takePhoto() {
                   val ic = imageCapture ?: return
+                  ic.takePicture(ContextCompat.getMainExecutor(this),
+                      object : ImageCapture.OnImageCapturedCallback() {
+                          override fun onCaptureSuccess(image: ImageProxy) {
+                              val rot = image.imageInfo.rotationDegrees
+                              var bmp = imageProxyToBitmap(image)
+                              image.close()
+                              if (bmp == null) { toast("فشل التصوير"); return }
+                              bmp = rotateBitmap(bmp, rot)
+                              if (currentMode == "بورتريه") {
+                                  applyPortrait(bmp) { out -> saveBitmap(out) }
+                              } else {
+                                  saveBitmap(bmp)
+                              }
+                          }
+                          override fun onError(exc: androidx.camera.core.ImageCaptureException) {
+                              toast("خطأ: ${exc.message}")
+                          }
+                      })
+              }
+
+              private fun imageProxyToBitmap(image: ImageProxy): Bitmap? {
+                  return try {
+                      val buffer = image.planes[0].buffer
+                      val bytes = ByteArray(buffer.remaining())
+                      buffer.get(bytes)
+                      BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                  } catch (e: Exception) { null }
+              }
+
+              private fun rotateBitmap(src: Bitmap, deg: Int): Bitmap {
+                  if (deg == 0) return src
+                  val m = Matrix(); m.postRotate(deg.toFloat())
+                  return Bitmap.createBitmap(src, 0, 0, src.width, src.height, m, true)
+              }
+
+              private fun applyPortrait(src: Bitmap, onDone: (Bitmap) -> Unit) {
+                  try {
+                      val opts = SelfieSegmenterOptions.Builder()
+                          .setDetectorMode(SelfieSegmenterOptions.SINGLE_IMAGE_MODE)
+                          .enableRawSizeMask()
+                          .build()
+                      val segmenter = Segmentation.getClient(opts)
+                      segmenter.process(InputImage.fromBitmap(src, 0))
+                          .addOnSuccessListener { mask ->
+                              try { onDone(blendPortrait(src, mask)) } catch (e: Exception) { onDone(src) }
+                              segmenter.close()
+                          }
+                          .addOnFailureListener { onDone(src) }
+                  } catch (e: Exception) { onDone(src) }
+              }
+
+              private fun blendPortrait(src: Bitmap, mask: SegmentationMask): Bitmap {
+                  val w = src.width
+                  val h = src.height
+                  val blurred = blurBitmap(src)
+                  val sharp = IntArray(w * h); src.getPixels(sharp, 0, w, 0, 0, w, h)
+                  val blur = IntArray(w * h); blurred.getPixels(blur, 0, w, 0, 0, w, h)
+                  val out = IntArray(w * h)
+                  val fb = mask.buffer.asFloatBuffer()
+                  val mw = mask.width
+                  val mh = mask.height
+                  for (y in 0 until h) {
+                      val my = (y * mh / h).coerceIn(0, mh - 1)
+                      for (x in 0 until w) {
+                          val mx = (x * mw / w).coerceIn(0, mw - 1)
+                          val a = fb.get(my * mw + mx).coerceIn(0f, 1f)
+                          val i = y * w + x
+                          val s = sharp[i]; val b = blur[i]
+                          val r = (Color.red(s) * a + Color.red(b) * (1 - a)).toInt().coerceIn(0, 255)
+                          val g = (Color.green(s) * a + Color.green(b) * (1 - a)).toInt().coerceIn(0, 255)
+                          val bl = (Color.blue(s) * a + Color.blue(b) * (1 - a)).toInt().coerceIn(0, 255)
+                          out[i] = Color.rgb(r, g, bl)
+                      }
+                  }
+                  val res = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                  res.setPixels(out, 0, w, 0, 0, w, h)
+                  return res
+              }
+
+              private fun blurBitmap(src: Bitmap): Bitmap {
+                  val f = 8
+                  val sw = (src.width / f).coerceAtLeast(1)
+                  val sh = (src.height / f).coerceAtLeast(1)
+                  val small = Bitmap.createScaledBitmap(src, sw, sh, true)
+                  return Bitmap.createScaledBitmap(small, src.width, src.height, true)
+              }
+
+              private fun saveBitmap(bmp: Bitmap) {
                   val name = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(System.currentTimeMillis())
                   val values = ContentValues().apply {
                       put(MediaStore.Images.Media.DISPLAY_NAME, "VANTA_$name.jpg")
                       put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
                   }
-                  val opts = ImageCapture.OutputFileOptions.Builder(
-                      contentResolver, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values).build()
-                  ic.takePicture(opts, ContextCompat.getMainExecutor(this),
-                      object : ImageCapture.OnImageSavedCallback {
-                          override fun onImageSaved(o: ImageCapture.OutputFileResults) { toast("Saved") }
-                          override fun onError(e: ImageCaptureException) { toast("Error: ${e.message}") }
-                      })
+                  val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                  uri?.let {
+                      contentResolver.openOutputStream(it)?.use { os ->
+                          bmp.compress(Bitmap.CompressFormat.JPEG, 97, os)
+                      }
+                  }
+                  toast("تم الحفظ")
               }
 
               @SuppressLint("MissingPermission")
               private fun toggleRecording() {
                   val vc = videoCapture ?: return
                   if (recording != null) {
-                      recording?.stop(); recording = null; toast("Stopped"); return
+                      recording?.stop(); recording = null; toast("توقف التسجيل"); return
                   }
                   val name = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(System.currentTimeMillis())
                   val values = ContentValues().apply {
@@ -340,9 +587,9 @@ jobs:
                       .setContentValues(values).build()
                   recording = vc.output.prepareRecording(this, opts).withAudioEnabled()
                       .start(ContextCompat.getMainExecutor(this)) { ev ->
-                          if (ev is VideoRecordEvent.Finalize) toast("Video saved")
+                          if (ev is VideoRecordEvent.Finalize) toast("تم حفظ الفيديو")
                       }
-                  toast("Recording")
+                  toast("يتم التسجيل")
               }
 
               private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_SHORT).show()
