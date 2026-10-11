@@ -83,7 +83,6 @@ jobs:
               implementation("androidx.camera:camera-video:$camerax")
               implementation("androidx.camera:camera-view:$camerax")
               implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
-              implementation("com.google.mlkit:segmentation-selfie:16.0.0-beta6")
           }
           EOF
           cat > app/src/main/AndroidManifest.xml <<'EOF'
@@ -280,8 +279,14 @@ jobs:
           import android.content.res.ColorStateList
           import android.graphics.Bitmap
           import android.graphics.BitmapFactory
+          import android.graphics.Canvas
           import android.graphics.Color
           import android.graphics.Matrix
+          import android.graphics.Paint
+          import android.graphics.PorterDuff
+          import android.graphics.PorterDuffXfermode
+          import android.graphics.RadialGradient
+          import android.graphics.Shader
           import android.os.Bundle
           import android.provider.MediaStore
           import android.view.Gravity
@@ -309,10 +314,6 @@ jobs:
           import androidx.camera.view.PreviewView
           import androidx.core.app.ActivityCompat
           import androidx.core.content.ContextCompat
-          import com.google.mlkit.vision.common.InputImage
-          import com.google.mlkit.vision.segmentation.Segmentation
-          import com.google.mlkit.vision.segmentation.SegmentationMask
-          import com.google.mlkit.vision.segmentation.SelfieSegmenterOptions
           import java.text.SimpleDateFormat
           import java.util.Locale
 
@@ -477,11 +478,8 @@ jobs:
                               image.close()
                               if (bmp == null) { toast("فشل التصوير"); return }
                               bmp = rotateBitmap(bmp, rot)
-                              if (currentMode == "بورتريه") {
-                                  applyPortrait(bmp) { out -> saveBitmap(out) }
-                              } else {
-                                  saveBitmap(bmp)
-                              }
+                              if (currentMode == "بورتريه") bmp = applyPortrait(bmp)
+                              saveBitmap(bmp)
                           }
                           override fun onError(exc: androidx.camera.core.ImageCaptureException) {
                               toast("خطأ: ${exc.message}")
@@ -504,56 +502,43 @@ jobs:
                   return Bitmap.createBitmap(src, 0, 0, src.width, src.height, m, true)
               }
 
-              private fun applyPortrait(src: Bitmap, onDone: (Bitmap) -> Unit) {
-                  try {
-                      val opts = SelfieSegmenterOptions.Builder()
-                          .setDetectorMode(SelfieSegmenterOptions.SINGLE_IMAGE_MODE)
-                          .enableRawSizeMask()
-                          .build()
-                      val segmenter = Segmentation.getClient(opts)
-                      segmenter.process(InputImage.fromBitmap(src, 0))
-                          .addOnSuccessListener { mask ->
-                              try { onDone(blendPortrait(src, mask)) } catch (e: Exception) { onDone(src) }
-                              segmenter.close()
-                          }
-                          .addOnFailureListener { onDone(src) }
-                  } catch (e: Exception) { onDone(src) }
-              }
-
-              private fun blendPortrait(src: Bitmap, mask: SegmentationMask): Bitmap {
-                  val w = src.width
-                  val h = src.height
-                  val blurred = blurBitmap(src)
-                  val sharp = IntArray(w * h); src.getPixels(sharp, 0, w, 0, 0, w, h)
-                  val blur = IntArray(w * h); blurred.getPixels(blur, 0, w, 0, 0, w, h)
-                  val out = IntArray(w * h)
-                  val fb = mask.buffer.asFloatBuffer()
-                  val mw = mask.width
-                  val mh = mask.height
-                  for (y in 0 until h) {
-                      val my = (y * mh / h).coerceIn(0, mh - 1)
-                      for (x in 0 until w) {
-                          val mx = (x * mw / w).coerceIn(0, mw - 1)
-                          val a = fb.get(my * mw + mx).coerceIn(0f, 1f)
-                          val i = y * w + x
-                          val s = sharp[i]; val b = blur[i]
-                          val r = (Color.red(s) * a + Color.red(b) * (1 - a)).toInt().coerceIn(0, 255)
-                          val g = (Color.green(s) * a + Color.green(b) * (1 - a)).toInt().coerceIn(0, 255)
-                          val bl = (Color.blue(s) * a + Color.blue(b) * (1 - a)).toInt().coerceIn(0, 255)
-                          out[i] = Color.rgb(r, g, bl)
-                      }
-                  }
-                  val res = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-                  res.setPixels(out, 0, w, 0, 0, w, h)
-                  return res
-              }
-
               private fun blurBitmap(src: Bitmap): Bitmap {
-                  val f = 8
+                  val f = 10
                   val sw = (src.width / f).coerceAtLeast(1)
                   val sh = (src.height / f).coerceAtLeast(1)
                   val small = Bitmap.createScaledBitmap(src, sw, sh, true)
                   return Bitmap.createScaledBitmap(small, src.width, src.height, true)
+              }
+
+              private fun applyPortrait(src: Bitmap): Bitmap {
+                  val w = src.width
+                  val h = src.height
+                  val blurred = blurBitmap(src)
+                  val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                  val canvas = Canvas(out)
+                  canvas.drawBitmap(blurred, 0f, 0f, null)
+
+                  val cx = w / 2f
+                  val cy = h * 0.40f
+                  val radius = w * 0.55f
+                  val mask = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                  val mc = Canvas(mask)
+                  val p = Paint()
+                  p.isAntiAlias = true
+                  p.shader = RadialGradient(cx, cy, radius,
+                      intArrayOf(0xFF000000.toInt(), 0xFF000000.toInt(), 0x00000000),
+                      floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP)
+                  mc.drawCircle(cx, cy, radius, p)
+
+                  val sharp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                  val sc = Canvas(sharp)
+                  sc.drawBitmap(src, 0f, 0f, null)
+                  val xp = Paint()
+                  xp.xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
+                  sc.drawBitmap(mask, 0f, 0f, xp)
+
+                  canvas.drawBitmap(sharp, 0f, 0f, null)
+                  return out
               }
 
               private fun saveBitmap(bmp: Bitmap) {
